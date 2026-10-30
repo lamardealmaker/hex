@@ -1,28 +1,31 @@
 # Experiments
 
-Experiments are unfinished features whose code sits on `dev` but stays
-dormant until someone turns one on for their own Hex. They are **unsupported**:
-an experiment may misbehave, change, or disappear without notice, and the
-window offers no switch for them. There is a flag, not a setting. Panes an
-experiment adds list under **Labs** at the bottom of the sidebar, indented
-while Labs or one of them is open.
+Experiments are unfinished features whose code sits on `dev` and can be turned
+on in dev, local, and test builds (`experiments::is_dev_build()`). Production
+builds (`!experiments::is_dev_build()`) ignore `HEX_EXPERIMENTS` and
+`~/.config/hex/experiments` completely, hide **Labs** and every experimental
+pane from the sidebar, and keep Meetings, Annotate, and Voice Filter dormant.
+
+In dev builds, **Labs** at the bottom of the sidebar offers live toggle
+switches for every experiment supported on the current OS, writing
+`~/.config/hex/experiments` atomically and applying changes live where
+supported (such as showing or hiding `Output`, `Voice Filter`, `HUD Lab`, and
+`Activity` immediately). Panes an active experiment adds list indented under
+**Labs**.
 
 ```ts
-Turn an experiment on                    // experiments.sources
-├── HEX_EXPERIMENTS=live-chapters,smart-turn  // commas or spaces; this process and its children
-├── ~/.config/hex/experiments            // one name per line, # comments; every launch
-│   ├── Hex Test.app -> ~/.config/hex-test/experiments
-│   └── Windows / Linux -> %USERPROFILE%\.config\hex, ~/.config/hex
-├── On = named in either source (union)
-├── Unknown name -> Warning in process.log, ignored    // never fatal
-└── Missing file -> Nothing on
+Production vs dev builds                 // experiments.dev-build
+├── Production (!is_dev_build()) -> Ignore env & file; hide Labs & experimental panes
+└── Dev / local / test (is_dev_build())
+    ├── Labs › Experiments switches -> Write ~/.config/hex/experiments + apply live
+    ├── HEX_EXPERIMENTS=live-chapters,smart-turn  // commas or spaces; this process
+    ├── ~/.config/hex/experiments        // one name per line, # comments
+    │   ├── Hex Test.app -> ~/.config/hex-test/experiments
+    │   └── Windows / Linux -> %USERPROFILE%\.config\hex, ~/.config/hex
+    ├── Unknown name -> Warning in process.log, ignored    // never fatal
+    └── Missing file -> Nothing on
 
-Launch                                   // experiments.snapshot
-├── Read both sources once -> Fixed for the life of the process
-├── process.log -> "experiments enabled" or "no experiments enabled"
-└── Edit a source -> Applies at the next launch
-
-hex experiments                          // experiments.cli; macOS, Windows, Linux
+hex experiments                          // experiments.cli; dev builds only
 ├── list [--json] -> Each experiment, on/off, source (env, file, env+file)
 ├── enable <name> -> Add it to the file atomically; print the restart hint
 ├── disable <name> -> Remove every line naming it; keep comments and others
@@ -31,6 +34,11 @@ hex experiments                          // experiments.cli; macOS, Windows, Lin
 
 The known experiments are compiled into
 [experiments.rs](../../src/experiments.rs):
+
+- `activity`: the Activity pane (`live.ndjson` event inspector; on by default in
+  debug builds, toggleable live in any dev build).
+- `hud-lab`: the HUD Lab pane on macOS (tunes Dot scope placement, glow, and
+  motion live; on by default in debug builds, toggleable live in any dev build).
 
 - `capture` is retired: [Annotate](capture.md) is on by default on macOS
   and Linux since 2026-10-29. A file or variable naming it is ignored.

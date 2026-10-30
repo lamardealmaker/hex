@@ -1,14 +1,17 @@
-//! Experiments: unfinished features that stay dormant on `dev` until a
-//! person turns them on for their own Hex. They are unsupported and may
-//! change or disappear without notice.
+//! Experiments: unfinished features that stay dormant until a person turns
+//! them on in a dev, local, or test build (`is_dev_build()`). Production
+//! builds (`!is_dev_build()`) ignore `HEX_EXPERIMENTS` and
+//! `~/.config/hex/experiments` completely so the public app runs strictly as
+//! the dictation appliance.
 //!
-//! Two sources are unioned: `HEX_EXPERIMENTS` (names separated by commas or
-//! spaces) and the `experiments` file in Hex's per-user config folder (one
-//! name per line, `#` comments). The process reads them once, on first use,
-//! so changes apply at the next launch. Unknown names are logged and ignored;
+//! In dev builds, two sources are unioned at launch: `HEX_EXPERIMENTS` (names
+//! separated by commas or spaces) and the `experiments` file in Hex's per-user
+//! config folder (one name per line, `#` comments). Toggling an experiment in
+//! the window's Labs page writes the file atomically and updates the live
+//! runtime flags where supported. Unknown names are logged and ignored;
 //! [`RETIRED`] names, experiments that shipped, are ignored silently.
 //! Debug builds read the same sources; `DEVELOPER_FEATURES_ENABLED` turns
-//! nothing on.
+//! nothing on here.
 //!
 //! Gate an experiment where it starts (the worker, thread, or capture that
 //! does its work), not only where its UI shows: a hidden pane whose worker
@@ -18,6 +21,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use clap::Subcommand;
 use color_eyre::Result;
@@ -30,8 +34,40 @@ pub const ENV: &str = "HEX_EXPERIMENTS";
 /// still name them.
 const RETIRED: [&str; 3] = ["capture", "dot-scope", "vocabulary"];
 
+/// Whether this is a developer, local, test, or dev-channel build.
+/// Production builds (`!is_dev_build()`) ignore `HEX_EXPERIMENTS` and
+/// `~/.config/hex/experiments` and hide experimental panes and features.
+pub fn is_dev_build() -> bool {
+    is_dev_build_for(
+        cfg!(debug_assertions),
+        cfg!(test),
+        option_env!("HEX_LOCAL_BUILD"),
+        option_env!("HEX_TEST_BUILD"),
+        option_env!("HEX_BUILD_CHANNEL"),
+        crate::VERSION,
+    )
+}
+
+pub(crate) fn is_dev_build_for(
+    debug: bool,
+    test: bool,
+    local_build: Option<&str>,
+    test_build: Option<&str>,
+    channel: Option<&str>,
+    version: &str,
+) -> bool {
+    debug
+        || test
+        || local_build == Some("1")
+        || test_build == Some("1")
+        || matches!(channel, Some("dev"))
+        || (channel.is_none() && version.contains("-dev"))
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Experiment {
+    Activity,
+    HudLab,
     LiveChapters,
     LiveText,
     Modes,
@@ -41,7 +77,9 @@ pub enum Experiment {
 }
 
 impl Experiment {
-    const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
+        Self::Activity,
+        Self::HudLab,
         Self::LiveChapters,
         Self::LiveText,
         Self::Modes,
@@ -57,6 +95,8 @@ impl Experiment {
     /// The stable name the env variable, the file, and the CLI use.
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Activity => "activity",
+            Self::HudLab => "hud-lab",
             Self::LiveChapters => "live-chapters",
             Self::LiveText => "live-text",
             Self::Modes => "modes",
@@ -68,12 +108,14 @@ impl Experiment {
 
     pub const fn description(self) -> &'static str {
         match self {
+            Self::Activity => "The Activity pane: inspect live dictation and context events.",
+            Self::HudLab => "The HUD Lab pane: tune Dot scope placement and motion live (macOS).",
             Self::LiveChapters => "Chapter a meeting's transcript live while it records.",
             Self::LiveText => {
                 "Live text: a streaming model publishes what you have said so far while you dictate."
             }
             Self::Modes => {
-                "Modes: the pane, per-app corrections, OpenCode rewriting, and transformations."
+                "Modes: the Output pane, per-app corrections, OpenCode rewriting, and transformations."
             }
             Self::Playground => {
                 "Rune's playground in the window (⇧⌘D, Ctrl+Shift+D off macOS): every fixture scene and story."
@@ -92,20 +134,52 @@ impl Experiment {
         Self::available().find(|experiment| experiment.name() == name)
     }
 
-    fn index(self) -> usize {
+    pub(crate) const fn index(self) -> usize {
         self as usize
     }
 }
 
-/// Whether `experiment` is on for this process, as read at launch.
+static LIVE: [AtomicBool; Experiment::ALL.len()] = [
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+];
+
+/// Whether `experiment` is on for this process. Always `false` in production
+/// builds (`!is_dev_build()`).
 pub fn enabled(experiment: Experiment) -> bool {
-    snapshot().enabled(experiment)
+    if !is_dev_build() {
+        return false;
+    }
+    let _ = snapshot();
+    LIVE[experiment.index()].load(Ordering::Acquire)
+}
+
+/// Turns `experiment` on or off in `~/.config/hex/experiments` and updates the
+/// live runtime flag for this process.
+pub fn set_enabled(experiment: Experiment, on: bool) -> Result<()> {
+    if !is_dev_build() {
+        return Err(eyre!("experiments are only available in dev builds"));
+    }
+    let _ = snapshot();
+    let path = crate::app_paths::experiments_file()?;
+    set(&path, experiment, on)?;
+    LIVE[experiment.index()].store(on, Ordering::Release);
+    Ok(())
 }
 
 /// The names of the experiments on for this process, for `hex status`.
 pub fn active_names() -> Vec<String> {
-    snapshot()
-        .active()
+    if !is_dev_build() {
+        return Vec::new();
+    }
+    Experiment::available()
+        .filter(|experiment| enabled(*experiment))
         .map(|experiment| experiment.name().into())
         .collect()
 }
@@ -113,6 +187,9 @@ pub fn active_names() -> Vec<String> {
 /// Logs the launch snapshot to process.log; call once logging is up in a
 /// long-lived Hex.
 pub fn log_launch() {
+    if !is_dev_build() {
+        return;
+    }
     let snapshot = snapshot();
     for unknown in &snapshot.unknown {
         tracing::warn!(
@@ -134,7 +211,13 @@ pub fn log_launch() {
 
 fn snapshot() -> &'static Snapshot {
     static SNAPSHOT: OnceLock<Snapshot> = OnceLock::new();
-    SNAPSHOT.get_or_init(Snapshot::load)
+    SNAPSHOT.get_or_init(|| {
+        let loaded = Snapshot::load();
+        for experiment in Experiment::ALL {
+            LIVE[experiment.index()].store(loaded.enabled(experiment), Ordering::Release);
+        }
+        loaded
+    })
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -187,6 +270,9 @@ struct Snapshot {
 
 impl Snapshot {
     fn load() -> Self {
+        if !is_dev_build() {
+            return Self::default();
+        }
         let env = std::env::var_os(ENV).map(|value| value.to_string_lossy().into_owned());
         let (file, file_error) =
             match crate::app_paths::experiments_file().and_then(|path| read_optional(&path)) {
@@ -339,6 +425,9 @@ pub enum ExperimentsCommand {
 
 /// `hex experiments`: reads and edits only the sources, never the running Hex.
 pub fn run(command: &ExperimentsCommand) -> Result<()> {
+    if !is_dev_build() {
+        return Err(eyre!("experiments are only available in dev builds"));
+    }
     let path = crate::app_paths::experiments_file()?;
     match command {
         ExperimentsCommand::List { json } => {
@@ -653,6 +742,18 @@ mod tests {
                 "file": "/home/kit/.config/hex/experiments",
                 "experiments": [
                     {
+                        "name": "activity",
+                        "description": Experiment::Activity.description(),
+                        "enabled": false,
+                        "sources": [],
+                    },
+                    {
+                        "name": "hud-lab",
+                        "description": Experiment::HudLab.description(),
+                        "enabled": false,
+                        "sources": [],
+                    },
+                    {
                         "name": "live-chapters",
                         "description": Experiment::LiveChapters.description(),
                         "enabled": false,
@@ -699,5 +800,77 @@ mod tests {
         assert!(text.contains("live-chapters  off  -"));
         assert!(text.contains("smart-turn     on   env+file"));
         assert!(text.contains("unknown experiment \"mystery\" in file"));
+    }
+
+    #[test]
+    fn production_builds_are_not_dev_builds_and_dev_local_test_are() {
+        // Stamped stable release (release.yml with channel=stable, or packaged tag):
+        assert!(!is_dev_build_for(
+            false,
+            false,
+            None,
+            None,
+            Some("stable"),
+            "3.0.0"
+        ));
+        assert!(!is_dev_build_for(
+            false,
+            false,
+            None,
+            Some(""),
+            Some("stable"),
+            "3.0.0"
+        ));
+        assert!(!is_dev_build_for(false, false, None, None, None, "3.0.0"));
+
+        // Dev, local, test, and debug builds:
+        assert!(is_dev_build_for(
+            true,
+            false,
+            None,
+            None,
+            Some("stable"),
+            "3.0.0"
+        ));
+        assert!(is_dev_build_for(
+            false,
+            true,
+            None,
+            None,
+            Some("stable"),
+            "3.0.0"
+        ));
+        assert!(is_dev_build_for(
+            false,
+            false,
+            Some("1"),
+            None,
+            None,
+            "3.0.0"
+        ));
+        assert!(is_dev_build_for(
+            false,
+            false,
+            None,
+            Some("1"),
+            None,
+            "0.0.0-test-42"
+        ));
+        assert!(is_dev_build_for(
+            false,
+            false,
+            None,
+            None,
+            Some("dev"),
+            "0.0.0-dev-42"
+        ));
+        assert!(is_dev_build_for(
+            false,
+            false,
+            None,
+            None,
+            None,
+            "0.0.0-dev-local-abc1234"
+        ));
     }
 }

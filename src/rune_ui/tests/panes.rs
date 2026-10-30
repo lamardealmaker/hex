@@ -1484,30 +1484,64 @@ fn hud_lab_picks_dot_scope_processing_placement_and_level() {
 }
 
 #[test]
-fn release_builds_show_hud_lab_with_the_playground() {
-    // The scene is a release build (no developer panes) with the experiment on.
-    let mut rt = runtime("mac-hud-lab-playground", true, PANE_SIZE);
-    assert!(!rt.state.platform.developer);
-    assert!(rt.find("nav-hud-lab").is_some());
+fn production_builds_hide_labs_and_experimental_panes() {
+    let rt = runtime("mac-production", true, PANE_SIZE);
+    assert!(!rt.state.platform.dev_build);
+    assert!(rt.find("nav-general").is_some());
+    assert!(rt.find("nav-history").is_some());
+    for hidden in [
+        "nav-labs",
+        "nav-meetings",
+        "nav-output",
+        "nav-annotate",
+        "nav-voice-filter",
+        "nav-hud-lab",
+        "nav-activity",
+    ] {
+        assert!(rt.find(hidden).is_none(), "production showed {hidden}");
+    }
+}
+
+#[test]
+fn dev_experiments_switches_toggle_panes_live() {
+    let mut rt = runtime("mac-labs", true, (980.0, 1400.0));
+    assert!(
+        rt.find("nav-output").is_some(),
+        "Output starts on in fixtures"
+    );
+    assert!(rt.find("nav-hud-lab").is_none());
     assert!(rt.find("nav-activity").is_none());
+
+    tap(&mut rt, "exp-modes");
+    assert!(!rt.state.platform.modes);
+    assert!(rt.find("nav-output").is_none(), "Output hides live");
+
+    tap(&mut rt, "exp-hud-lab");
+    assert!(rt.state.platform.hud_lab);
+    assert!(rt.find("nav-hud-lab").is_some(), "HUD Lab joins Labs live");
+
+    tap(&mut rt, "exp-activity");
+    assert!(rt.state.platform.activity);
+    assert!(
+        rt.find("nav-activity").is_some(),
+        "Activity joins Labs live"
+    );
+
+    tap(&mut rt, "nav-hud-lab");
+    assert_eq!(rt.state.pane, Pane::HudLab);
     let (x, y) = rt.find("dot-spacing/track").expect("a Dot scope slider");
     rt.pointer_down(x - 100.0, y);
     rt.pointer_up(x - 100.0, y);
     settle(&mut rt);
-    assert!(
-        matches!(asked(&rt).last(), Some(PlatformRequest::TuneHud(_))),
-        "a slider tunes the HUD live without restarting its demo: {:?}",
-        asked(&rt)
-    );
+    assert!(matches!(
+        asked(&rt).last(),
+        Some(PlatformRequest::TuneHud(_))
+    ));
     tap(&mut rt, "nav-general");
     assert!(matches!(
         asked(&rt).last(),
         Some(PlatformRequest::EndHudDemo)
     ));
-    let mut rt = runtime("mac-hud-lab-playground", true, PANE_SIZE);
-    rt.state.platform.playground = false;
-    refresh(&mut rt);
-    assert!(rt.find("nav-hud-lab").is_none());
 }
 
 #[test]

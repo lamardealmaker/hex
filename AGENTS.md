@@ -28,13 +28,16 @@ and keep consequential behavior explicit. Deterministic personal transcript
 transformations live in the explicit TypeScript user config (`~/.config/hex/hex.config.ts`). User-facing
 runtime settings persist in Application Support.
 
-The distributed release starts in hotkey-dictation-only mode.
-Meetings (beta) is a
-persisted opt-in (`meetings.enabled`, default off) that adds call detection, the
-Meetings pane, menu-bar recording controls, and meeting paste in release builds.
-`DEVELOPER_FEATURES_ENABLED` keeps meetings always available in debug builds and
-keeps the meeting CLI, Activity, and HUD Lab debug-only. One exception: while
-the `playground` experiment is on, release builds show HUD Lab too.
+The distributed production release (`!experiments::is_dev_build()`) runs strictly
+in hotkey-dictation-only mode: it hides Labs and all experimental panes, ignores
+`HEX_EXPERIMENTS` and `~/.config/hex/experiments`, and keeps Meetings, Annotate,
+and Voice Filter dormant. Dev, local, and test builds (`experiments::is_dev_build()`)
+expose the Labs sidebar item with switches for Meetings, Annotate, and every
+experiment (`Output`, `Voice Filter`, `Live text`, `Smart Turn`, `Live chapters`,
+`Playground`, `HUD Lab`, `Activity`), writing `~/.config/hex/experiments` and
+applying live where supported. `DEVELOPER_FEATURES_ENABLED` turns Meetings,
+Activity, and HUD Lab on by default in debug builds and keeps the meeting CLI
+debug-only.
 
 ## Feature Map
 

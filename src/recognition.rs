@@ -1019,6 +1019,13 @@ pub fn listen(
         }
 
         let audio = input.recv_timeout(Duration::from_millis(20))?;
+        let next_smart_turn =
+            crate::experiments::enabled(crate::experiments::Experiment::SmartTurn);
+        if next_smart_turn != smart_turn.is_some() {
+            smart_turn = next_smart_turn
+                .then(|| crate::smart_turn::SmartTurn::start(project_root))
+                .flatten();
+        }
         if let Some(smart_turn) = &mut smart_turn {
             // Follow a shortcut dictation from its start, so speech while the
             // shortcut is still down counts; only a locked or Toggle capture

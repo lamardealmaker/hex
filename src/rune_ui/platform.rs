@@ -296,17 +296,28 @@ pub(super) struct PlatformState {
     pub(super) calendar: CalendarView,
     /// The tour's relaunch failed; the person must reopen Hex.
     pub(super) relaunch_failed: bool,
-    /// Developer builds: the Activity pane and HUD Lab
+    /// Dev, local, or test build (`crate::experiments::is_dev_build` on a
+    /// native host; `true` in fixtures except `"mac-production"`). Production
+    /// builds hide Labs and every experimental pane.
+    pub(super) dev_build: bool,
+    /// Developer builds: turns Activity and HUD Lab on by default
     /// (`crate::DEVELOPER_FEATURES_ENABLED` on a native host).
     pub(super) developer: bool,
-    /// The `playground` experiment: release builds show HUD Lab too.
+    /// Live HUD Lab pane toggle (`hud-lab` experiment or developer build).
+    pub(super) hud_lab: bool,
+    /// Live Activity pane toggle (`activity` experiment or developer build).
+    pub(super) activity: bool,
+    /// The `playground` experiment.
     pub(super) playground: bool,
-    /// The `modes` experiment: the Modes pane and its tour tip
+    /// The `modes` experiment: the Output pane and its tour tip
     /// (`crate::experiments::enabled` on a native host; on in fixtures).
     pub(super) modes: bool,
     /// The `voice-filter` experiment: the Voice Filter pane even before the
     /// Hex Microphone is on (`crate::experiments::enabled` on a native host).
     pub(super) voice_filter: bool,
+    /// Live per-experiment switch state for non-pane experiments (`live-text`,
+    /// `smart-turn`, `live-chapters`, …).
+    pub(super) experiments: [bool; crate::experiments::Experiment::ALL.len()],
     /// macOS 27 lists Accessibility as "Device Control and Data Access"
     /// (`permission_guide::list_name`); the permission rows use that name.
     pub(super) accessibility_renamed: bool,
@@ -374,10 +385,18 @@ impl PlatformState {
             meeting_folder_error: None,
             calendar: CalendarView::default(),
             relaunch_failed: false,
+            dev_build: true,
             developer: false,
+            hud_lab: false,
+            activity: false,
             playground: false,
             modes: true,
             voice_filter: false,
+            experiments: {
+                let mut flags = [false; crate::experiments::Experiment::ALL.len()];
+                flags[crate::experiments::Experiment::Modes.index()] = true;
+                flags
+            },
             accessibility_renamed: false,
             tuning: TunedFilterConfig::default(),
             demo: None,
@@ -640,7 +659,7 @@ impl PlatformHost {
 /// granted ahead of time, and Scrawl's own app is macOS's.
 #[cfg(target_os = "linux")]
 fn linux_scrawl_poll(state: &mut PlatformState) -> bool {
-    if state.scrawl.is_some() {
+    if !state.dev_build || state.scrawl.is_some() {
         return false;
     }
     state.scrawl = Some(ScrawlView::preview());
