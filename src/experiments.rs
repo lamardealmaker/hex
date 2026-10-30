@@ -30,9 +30,9 @@ use serde::Serialize;
 
 pub const ENV: &str = "HEX_EXPERIMENTS";
 
-/// Experiments that became the default: an old file or env variable may
+/// Experiments that shipped or were retired: an old file or env variable may
 /// still name them.
-const RETIRED: [&str; 3] = ["capture", "dot-scope", "vocabulary"];
+const RETIRED: [&str; 5] = ["capture", "dot-scope", "modes", "smart-turn", "vocabulary"];
 
 /// Whether this is a developer, local, test, or dev-channel build.
 /// Production builds (`!is_dev_build()`) ignore `HEX_EXPERIMENTS` and
@@ -66,25 +66,17 @@ pub(crate) fn is_dev_build_for(
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Experiment {
-    Activity,
-    HudLab,
     LiveChapters,
     LiveText,
-    Modes,
     Playground,
-    SmartTurn,
     VoiceFilter,
 }
 
 impl Experiment {
-    pub const ALL: [Self; 8] = [
-        Self::Activity,
-        Self::HudLab,
+    pub const ALL: [Self; 4] = [
         Self::LiveChapters,
         Self::LiveText,
-        Self::Modes,
         Self::Playground,
-        Self::SmartTurn,
         Self::VoiceFilter,
     ];
 
@@ -95,33 +87,21 @@ impl Experiment {
     /// The stable name the env variable, the file, and the CLI use.
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Activity => "activity",
-            Self::HudLab => "hud-lab",
             Self::LiveChapters => "live-chapters",
             Self::LiveText => "live-text",
-            Self::Modes => "modes",
             Self::Playground => "playground",
-            Self::SmartTurn => "smart-turn",
             Self::VoiceFilter => "voice-filter",
         }
     }
 
     pub const fn description(self) -> &'static str {
         match self {
-            Self::Activity => "The Activity pane: inspect live dictation and context events.",
-            Self::HudLab => "The HUD Lab pane: tune Dot scope placement and motion live (macOS).",
             Self::LiveChapters => "Chapter a meeting's transcript live while it records.",
             Self::LiveText => {
                 "Live text: a streaming model publishes what you have said so far while you dictate."
             }
-            Self::Modes => {
-                "Modes: the Output pane, per-app corrections, OpenCode rewriting, and transformations."
-            }
             Self::Playground => {
-                "Rune's playground in the window (⇧⌘D, Ctrl+Shift+D off macOS): every fixture scene and story."
-            }
-            Self::SmartTurn => {
-                "Stop hands-free dictation when Smart Turn hears you finish (macOS)."
+                "Rune's playground in the window (⇧⌘D, Ctrl+Shift+D off macOS): HUD Lab, prototypes, and fixture scenes."
             }
             Self::VoiceFilter => {
                 "The Voice Filter pane: the Hex Microphone driver and its filters (macOS)."
@@ -140,10 +120,6 @@ impl Experiment {
 }
 
 static LIVE: [AtomicBool; Experiment::ALL.len()] = [
-    AtomicBool::new(false),
-    AtomicBool::new(false),
-    AtomicBool::new(false),
-    AtomicBool::new(false),
     AtomicBool::new(false),
     AtomicBool::new(false),
     AtomicBool::new(false),
@@ -590,15 +566,15 @@ mod tests {
             Some(
                 "# Hex experiments\n\
                  \n\
-                 smart-turn   # hands-free stop\n\
+                 live-text   # provisional line\n\
                  live-chapters\n\
-                 smart-turn\n\
+                 live-text\n\
                  # disabled-thing\n\
                  nope\r\n",
             ),
         );
         assert!(snapshot.enabled(Experiment::LiveChapters));
-        assert!(snapshot.enabled(Experiment::SmartTurn));
+        assert!(snapshot.enabled(Experiment::LiveText));
         assert_eq!(
             snapshot.sources[Experiment::LiveChapters.index()],
             Sources {
@@ -607,7 +583,7 @@ mod tests {
             }
         );
         assert_eq!(
-            snapshot.sources[Experiment::SmartTurn.index()].labels(),
+            snapshot.sources[Experiment::LiveText.index()].labels(),
             ["file"]
         );
         assert_eq!(
@@ -628,13 +604,13 @@ mod tests {
     #[test]
     fn retired_experiments_are_ignored_silently() {
         let snapshot = Snapshot::parse(
-            Some("dot-scope"),
-            Some("dot-scope\nvocabulary\nsmart-turn\n"),
+            Some("dot-scope,modes"),
+            Some("dot-scope\nvocabulary\nsmart-turn\nlive-text\n"),
         );
         assert!(snapshot.unknown.is_empty());
         assert_eq!(
             snapshot.active().collect::<Vec<_>>(),
-            [Experiment::SmartTurn]
+            [Experiment::LiveText]
         );
     }
 
@@ -651,31 +627,31 @@ mod tests {
 
     #[test]
     fn enabling_appends_once_under_a_header() {
-        let created = edit(None, "smart-turn", true).unwrap();
+        let created = edit(None, "live-text", true).unwrap();
         assert!(created.starts_with("# Hex experiments"));
-        assert!(created.ends_with("\nsmart-turn\n"));
-        assert_eq!(edit(Some(&created), "smart-turn", true), None);
+        assert!(created.ends_with("\nlive-text\n"));
+        assert_eq!(edit(Some(&created), "live-text", true), None);
 
         assert_eq!(
-            edit(Some("# mine\nlive-chapters"), "smart-turn", true).unwrap(),
-            "# mine\nlive-chapters\nsmart-turn\n"
+            edit(Some("# mine\nlive-chapters"), "live-text", true).unwrap(),
+            "# mine\nlive-chapters\nlive-text\n"
         );
-        assert_eq!(edit(Some("smart-turn # yes\n"), "smart-turn", true), None);
+        assert_eq!(edit(Some("live-text # yes\n"), "live-text", true), None);
     }
 
     #[test]
     fn disabling_removes_every_line_naming_it_and_keeps_the_rest() {
         assert_eq!(
             edit(
-                Some("# mine\nsmart-turn\nlive-chapters # keep\nsmart-turn  # again\n"),
-                "smart-turn",
+                Some("# mine\nlive-text\nlive-chapters # keep\nlive-text  # again\n"),
+                "live-text",
                 false
             )
             .unwrap(),
             "# mine\nlive-chapters # keep\n"
         );
-        assert_eq!(edit(Some("# smart-turn\n"), "smart-turn", false), None);
-        assert_eq!(edit(None, "smart-turn", false), None);
+        assert_eq!(edit(Some("# live-text\n"), "live-text", false), None);
+        assert_eq!(edit(None, "live-text", false), None);
     }
 
     #[test]
@@ -683,18 +659,18 @@ mod tests {
         let directory = temp_dir("set");
         let path = directory.join("hex-test/experiments");
 
-        assert!(!set(&path, Experiment::SmartTurn, false).unwrap());
+        assert!(!set(&path, Experiment::LiveText, false).unwrap());
         assert!(!path.exists());
-        assert!(set(&path, Experiment::SmartTurn, true).unwrap());
+        assert!(set(&path, Experiment::LiveText, true).unwrap());
         assert!(set(&path, Experiment::LiveChapters, true).unwrap());
         assert!(!set(&path, Experiment::LiveChapters, true).unwrap());
         let snapshot = Snapshot::parse(None, read_optional(&path).unwrap().as_deref());
         assert_eq!(
             snapshot.active().collect::<Vec<_>>(),
-            [Experiment::LiveChapters, Experiment::SmartTurn]
+            [Experiment::LiveChapters, Experiment::LiveText]
         );
 
-        assert!(set(&path, Experiment::SmartTurn, false).unwrap());
+        assert!(set(&path, Experiment::LiveText, false).unwrap());
         let snapshot = Snapshot::parse(None, read_optional(&path).unwrap().as_deref());
         assert_eq!(
             snapshot.active().collect::<Vec<_>>(),
@@ -719,20 +695,20 @@ mod tests {
         let link = directory.join("experiments");
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        assert!(set(&link, Experiment::SmartTurn, true).unwrap());
+        assert!(set(&link, Experiment::LiveText, true).unwrap());
         assert!(
             fs::symlink_metadata(&link)
                 .unwrap()
                 .file_type()
                 .is_symlink()
         );
-        assert_eq!(fs::read_to_string(&target).unwrap(), "# kept\nsmart-turn\n");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "# kept\nlive-text\n");
         fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn list_reports_each_source() {
-        let snapshot = Snapshot::parse(Some("smart-turn"), Some("smart-turn\nmystery\n"));
+        let snapshot = Snapshot::parse(Some("live-text"), Some("live-text\nmystery\n"));
         let path = Path::new("/home/kit/.config/hex/experiments");
         let json = serde_json::to_value(list_json(&snapshot, path)).unwrap();
         assert_eq!(
@@ -742,18 +718,6 @@ mod tests {
                 "file": "/home/kit/.config/hex/experiments",
                 "experiments": [
                     {
-                        "name": "activity",
-                        "description": Experiment::Activity.description(),
-                        "enabled": false,
-                        "sources": [],
-                    },
-                    {
-                        "name": "hud-lab",
-                        "description": Experiment::HudLab.description(),
-                        "enabled": false,
-                        "sources": [],
-                    },
-                    {
                         "name": "live-chapters",
                         "description": Experiment::LiveChapters.description(),
                         "enabled": false,
@@ -762,26 +726,14 @@ mod tests {
                     {
                         "name": "live-text",
                         "description": Experiment::LiveText.description(),
-                        "enabled": false,
-                        "sources": [],
-                    },
-                    {
-                        "name": "modes",
-                        "description": Experiment::Modes.description(),
-                        "enabled": false,
-                        "sources": [],
+                        "enabled": true,
+                        "sources": ["env", "file"],
                     },
                     {
                         "name": "playground",
                         "description": Experiment::Playground.description(),
                         "enabled": false,
                         "sources": [],
-                    },
-                    {
-                        "name": "smart-turn",
-                        "description": Experiment::SmartTurn.description(),
-                        "enabled": true,
-                        "sources": ["env", "file"],
                     },
                     {
                         "name": "voice-filter",
@@ -798,7 +750,7 @@ mod tests {
         print_list(&mut text, &snapshot, path).unwrap();
         let text = String::from_utf8(text).unwrap();
         assert!(text.contains("live-chapters  off  -"));
-        assert!(text.contains("smart-turn     on   env+file"));
+        assert!(text.contains("live-text      on   env+file"));
         assert!(text.contains("unknown experiment \"mystery\" in file"));
     }
 

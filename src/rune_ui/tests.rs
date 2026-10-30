@@ -616,23 +616,21 @@ fn every_scene_stops_asking_for_frames() {
 }
 
 #[test]
-fn the_sidebar_has_no_output_without_the_experiment() {
-    let mut rt = runtime("modes-off", true, PANE_SIZE);
-    tap(&mut rt, "nav-labs");
-    assert!(rt.find("nav-output").is_none());
-    assert!(!Pane::Output.shown(&rt.state));
-    let rt = runtime("output", true, PANE_SIZE);
-    assert!(rt.find("nav-modes").is_none(), "Output replaces Modes");
-    assert!(
-        rt.find("nav-output").is_some(),
-        "Labs unfolds around its pane"
-    );
+fn the_sidebar_always_shows_output() {
+    for scene in ["portal", "mac-settings", "mac-production"] {
+        let rt = runtime(scene, true, PANE_SIZE);
+        assert!(
+            rt.find("nav-output").is_some(),
+            "{scene} shows Output in the main sidebar"
+        );
+        assert!(Pane::Output.shown(&rt.state));
+        assert!(rt.find("nav-modes").is_none(), "Output replaces Modes");
+    }
 }
 
 #[test]
 fn the_sidebar_switches_panes_and_keeps_settings() {
     let mut rt = runtime("portal", true, PANE_SIZE);
-    tap(&mut rt, "nav-labs");
     for (key, pane) in [
         ("nav-output", Pane::Output),
         ("nav-history", Pane::History),
@@ -648,7 +646,6 @@ fn the_sidebar_switches_panes_and_keeps_settings() {
 #[test]
 fn the_sidebar_switches_on_press_not_release() {
     let mut rt = runtime("portal", true, PANE_SIZE);
-    tap(&mut rt, "nav-labs");
     settle(&mut rt);
     let (x, y) = rt.find("nav-output").expect("the Output item");
     rt.pointer_down(x, y);
@@ -1469,7 +1466,7 @@ fn the_sidebar_moves_with_arrows_and_command_numbers() {
         "Tab enters at the current pane"
     );
     key(&mut rt, Key::Down, Mods::default());
-    assert_eq!(rt.state.pane, Pane::History, "selection follows the arrows");
+    assert_eq!(rt.state.pane, Pane::Output, "selection follows the arrows");
     let command = Mods {
         cmd: true,
         ..Mods::default()

@@ -476,7 +476,7 @@ enum Pane {
     #[default]
     General,
     /// What Hex does to every dictation and in some apps, read-only: the
-    /// person's agent edits it (the `modes` experiment).
+    /// person's agent edits it.
     Output,
     /// The old per-app editor, kept for its scenes until it is removed.
     Modes,
@@ -491,9 +491,9 @@ enum Pane {
     /// The Hex Microphone's driver, tuning, and try-it demo (macOS, under
     /// Experiments).
     VoiceFilter,
-    /// The dictation indicator's tuning (macOS debug builds).
+    /// The dictation indicator's tuning scene (Playground only).
     HudLab,
-    /// The event log (debug builds).
+    /// Legacy event-log inspector scene (Playground only).
     Activity,
 }
 
@@ -513,12 +513,11 @@ impl Pane {
 
     fn shown(self, ui: &Ui) -> bool {
         if !ui.platform.dev_build {
-            return matches!(self, Pane::General | Pane::History);
+            return matches!(self, Pane::General | Pane::Output | Pane::History);
         }
         let caps = ui.platform.caps;
         match self {
-            Pane::Output => ui.platform.modes,
-            Pane::Modes => false,
+            Pane::Modes | Pane::HudLab | Pane::Activity => false,
             Pane::Meetings => caps.meetings,
             Pane::VoiceFilter => {
                 caps.fun
@@ -531,21 +530,19 @@ impl Pane {
                             .is_some_and(|status| status.driver_bundle_installed),
                     )
             }
-            Pane::HudLab => caps.hud_lab && (ui.platform.developer || ui.platform.hud_lab),
-            Pane::Activity => ui.platform.developer || ui.platform.activity,
             #[cfg(hex_capture)]
             Pane::Annotate => ui.platform.scrawl.is_some(),
             _ => true,
         }
     }
 
-    /// Listed under the sidebar's Experiments heading.
+    /// Listed under the sidebar's Labs group.
     fn experimental(self) -> bool {
         #[cfg(hex_capture)]
         if self == Pane::Annotate {
             return true;
         }
-        matches!(self, Pane::VoiceFilter | Pane::HudLab | Pane::Activity)
+        matches!(self, Pane::VoiceFilter)
     }
 
     fn title(self) -> &'static str {
@@ -711,22 +708,13 @@ impl Ui {
         ui.error = error;
         ui.history = history::HistoryPane::shared(store);
         ui.models = models::Models::load();
-        if crate::experiments::enabled(crate::experiments::Experiment::Modes) {
-            ui.modes.load_personal_commands();
-        }
+        ui.modes.load_personal_commands();
         let dev_build = crate::experiments::is_dev_build();
         ui.platform.dev_build = dev_build;
         for experiment in crate::experiments::Experiment::ALL {
             ui.platform.experiments[experiment.index()] = crate::experiments::enabled(experiment);
         }
         ui.platform.developer = dev_build && crate::DEVELOPER_FEATURES_ENABLED;
-        ui.platform.hud_lab = dev_build
-            && (crate::DEVELOPER_FEATURES_ENABLED
-                || crate::experiments::enabled(crate::experiments::Experiment::HudLab));
-        ui.platform.activity = dev_build
-            && (crate::DEVELOPER_FEATURES_ENABLED
-                || crate::experiments::enabled(crate::experiments::Experiment::Activity));
-        ui.platform.modes = crate::experiments::enabled(crate::experiments::Experiment::Modes);
         ui.platform.voice_filter =
             crate::experiments::enabled(crate::experiments::Experiment::VoiceFilter);
         ui.platform.playground = playground::enabled();
@@ -1806,11 +1794,6 @@ const SCENES: &[Scene] = &[
             .post_processing
             .enabled = false;
         ui.pane = Pane::Modes;
-    }),
-    ("modes-off", |ui| {
-        *ui = portal_fixture();
-        ui.platform.modes = false;
-        ui.pane = Pane::General;
     }),
     ("modes-global", |ui| {
         *ui = portal_fixture();

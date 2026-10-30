@@ -360,7 +360,6 @@ pub fn run(shutdown: &'static AtomicBool, listener: ListenerConfig) -> Result<()
             }
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::recognition::listen(
-                    &listener.project_root,
                     event_log,
                     listener.device.as_deref(),
                     shutdown,

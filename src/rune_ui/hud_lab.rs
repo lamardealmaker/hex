@@ -40,8 +40,9 @@ fn configure(ui: &mut Ui, change: impl FnOnce(&mut HudLab)) {
     });
 }
 
-/// Dot scope's sliders, grouped as HUD Lab shows them, by `KNOBS` key.
-const DOT_SCOPE_GROUPS: [(&str, &[&str]); 5] = [
+/// Dot scope's sliders, grouped by `KNOBS` key (shared with the HUD
+/// stories in Playground).
+pub(super) const DOT_SCOPE_GROUPS: [(&str, &[&str]); 5] = [
     (
         "Field",
         &[

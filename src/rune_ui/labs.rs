@@ -5,12 +5,8 @@
 use rune::{El, Icon, Tx, col, row, text};
 
 use super::controls::{self, CardRow, Paint, card, icon_row, pressable_row, row_switch};
-use super::icons::{HINTS, MIC, SPARKLES, WAVE};
-use super::platform::Os;
-use super::{
-    ACTIVITY_ICON, HUD_LAB_ICON, NAV_ROW_GAP, NAV_ROW_HEIGHT, OUTPUT_ICON, Pane, Ui,
-    VOICE_FILTER_ICON,
-};
+use super::icons::{HINTS, SPARKLES, WAVE};
+use super::{NAV_ROW_GAP, NAV_ROW_HEIGHT, Pane, Ui, VOICE_FILTER_ICON};
 use crate::desktop_i18n::tr;
 use crate::experiments::Experiment;
 
@@ -73,10 +69,10 @@ fn turned_on(ui: &Ui, pane: Pane) -> bool {
     }
 }
 
-/// The main sidebar's panes, in order: General, History, then the opt-in
-/// features turned on.
+/// The main sidebar's panes, in order: General, Output, History, then the
+/// opt-in features turned on.
 pub(super) fn main_panes(ui: &Ui) -> Vec<Pane> {
-    let mut panes = vec![Pane::General, Pane::History];
+    let mut panes = vec![Pane::General, Pane::Output, Pane::History];
     panes.extend(
         [Pane::Meetings]
             .into_iter()
@@ -85,8 +81,8 @@ pub(super) fn main_panes(ui: &Ui) -> Vec<Pane> {
     panes
 }
 
-/// The experiments' panes this install has, Output among them: listed under
-/// Labs, never in the main sidebar. Empty in production builds.
+/// The experiments' panes this install has: listed under Labs, never in the
+/// main sidebar. Empty in production builds.
 pub(super) fn experiments(ui: &Ui) -> Vec<Pane> {
     if !ui.platform.dev_build {
         return Vec::new();
@@ -94,7 +90,7 @@ pub(super) fn experiments(ui: &Ui) -> Vec<Pane> {
     Pane::ALL
         .iter()
         .copied()
-        .filter(|pane| pane.shown(ui) && (pane.experimental() || *pane == Pane::Output))
+        .filter(|pane| pane.shown(ui) && pane.experimental())
         .collect()
 }
 
@@ -261,7 +257,6 @@ struct ExperimentToggle {
 
 fn experiment_on(ui: &Ui, experiment: Experiment) -> bool {
     match experiment {
-        Experiment::Modes => ui.platform.modes,
         Experiment::VoiceFilter => ui.settings.experimental.voice_filter_enabled(
             ui.platform.voice_filter,
             ui.platform
@@ -270,8 +265,6 @@ fn experiment_on(ui: &Ui, experiment: Experiment) -> bool {
                 .is_some_and(|status| status.driver_bundle_installed),
         ),
         Experiment::Playground => ui.platform.playground,
-        Experiment::HudLab => ui.platform.developer || ui.platform.hud_lab,
-        Experiment::Activity => ui.platform.developer || ui.platform.activity,
         other => ui.platform.experiments[other.index()],
     }
 }
@@ -281,15 +274,7 @@ fn experiment_toggles(ui: &Ui) -> Vec<ExperimentToggle> {
         return Vec::new();
     }
     let caps = ui.platform.caps;
-    let mut items = vec![ExperimentToggle {
-        key: "exp-modes",
-        experiment: Experiment::Modes,
-        icon: &OUTPUT_ICON,
-        title: tr("Output"),
-        about: tr("Per-app modes, OpenCode rewriting, and transformations"),
-        on: experiment_on(ui, Experiment::Modes),
-        pane: Some(Pane::Output),
-    }];
+    let mut items = Vec::new();
     if caps.fun {
         items.push(ExperimentToggle {
             key: "exp-voice-filter",
@@ -310,17 +295,6 @@ fn experiment_toggles(ui: &Ui) -> Vec<ExperimentToggle> {
         on: experiment_on(ui, Experiment::LiveText),
         pane: None,
     });
-    if caps.os == Os::Macos {
-        items.push(ExperimentToggle {
-            key: "exp-smart-turn",
-            experiment: Experiment::SmartTurn,
-            icon: &MIC,
-            title: "Smart Turn",
-            about: tr("Finish locked or toggle dictations automatically when you pause"),
-            on: experiment_on(ui, Experiment::SmartTurn),
-            pane: None,
-        });
-    }
     if caps.meetings {
         items.push(ExperimentToggle {
             key: "exp-live-chapters",
@@ -341,27 +315,6 @@ fn experiment_toggles(ui: &Ui) -> Vec<ExperimentToggle> {
         on: experiment_on(ui, Experiment::Playground),
         pane: None,
     });
-    if caps.hud_lab {
-        items.push(ExperimentToggle {
-            key: "exp-hud-lab",
-            experiment: Experiment::HudLab,
-            icon: &HUD_LAB_ICON,
-            title: "HUD Lab",
-            about: tr("Tune Dot scope placement, glow, and motion live"),
-            on: experiment_on(ui, Experiment::HudLab),
-            pane: Some(Pane::HudLab),
-        });
-    }
-    items.push(ExperimentToggle {
-        key: "exp-activity",
-        experiment: Experiment::Activity,
-        icon: &ACTIVITY_ICON,
-        title: tr("Activity"),
-        about: tr("Inspect live dictation, context, and processing events"),
-        on: experiment_on(ui, Experiment::Activity),
-        pane: Some(Pane::Activity),
-    });
-    let _ = &SPARKLES;
     items
 }
 
@@ -375,15 +328,6 @@ fn flip_experiment(ui: &mut Ui, experiment: Experiment) {
     }
     ui.platform.experiments[experiment.index()] = on;
     match experiment {
-        Experiment::Modes => {
-            ui.platform.modes = on;
-            if on && ui.live() {
-                ui.modes.load_personal_commands();
-            }
-            if ui.live() {
-                ui.settings.refresh_runtime();
-            }
-        }
         Experiment::VoiceFilter => {
             ui.platform.voice_filter = on;
             if !on && ui.settings.experimental.hex_microphone {
@@ -395,21 +339,7 @@ fn flip_experiment(ui: &mut Ui, experiment: Experiment) {
         Experiment::Playground => {
             ui.platform.playground = on;
         }
-        Experiment::HudLab => {
-            if !on && ui.platform.developer {
-                ui.platform.developer = false;
-                ui.platform.activity = true;
-            }
-            ui.platform.hud_lab = on;
-        }
-        Experiment::Activity => {
-            if !on && ui.platform.developer {
-                ui.platform.developer = false;
-                ui.platform.hud_lab = true;
-            }
-            ui.platform.activity = on;
-        }
-        Experiment::LiveChapters | Experiment::LiveText | Experiment::SmartTurn => {}
+        Experiment::LiveChapters | Experiment::LiveText => {}
     }
 }
 

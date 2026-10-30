@@ -52,8 +52,6 @@ pub(super) struct Capabilities {
     /// The Voice Filter pane: the Hex Microphone's driver, tuning, and
     /// try-it demo (macOS, under Experiments).
     pub(super) fun: bool,
-    /// The HUD Lab developer pane drives the dictation indicator (macOS).
-    pub(super) hud_lab: bool,
     /// Modifier-only shortcuts can require the left or right key (macOS).
     pub(super) modifier_sides: bool,
     pub(super) duck_audio: bool,
@@ -77,7 +75,6 @@ impl Capabilities {
         hex_microphone: false,
         practice_dictation: false,
         fun: false,
-        hud_lab: false,
         modifier_sides: false,
         duck_audio: false,
         keyboard_model_switching: false,
@@ -97,7 +94,6 @@ impl Capabilities {
         hex_microphone: true,
         practice_dictation: true,
         fun: true,
-        hud_lab: true,
         modifier_sides: true,
         duck_audio: true,
         keyboard_model_switching: true,
@@ -117,7 +113,6 @@ impl Capabilities {
         hex_microphone: false,
         practice_dictation: false,
         fun: false,
-        hud_lab: false,
         modifier_sides: false,
         duck_audio: false,
         keyboard_model_switching: false,
@@ -300,23 +295,16 @@ pub(super) struct PlatformState {
     /// native host; `true` in fixtures except `"mac-production"`). Production
     /// builds hide Labs and every experimental pane.
     pub(super) dev_build: bool,
-    /// Developer builds: turns Activity and HUD Lab on by default
+    /// Developer builds: keeps Meetings available without opt-in in debug builds
     /// (`crate::DEVELOPER_FEATURES_ENABLED` on a native host).
     pub(super) developer: bool,
-    /// Live HUD Lab pane toggle (`hud-lab` experiment or developer build).
-    pub(super) hud_lab: bool,
-    /// Live Activity pane toggle (`activity` experiment or developer build).
-    pub(super) activity: bool,
     /// The `playground` experiment.
     pub(super) playground: bool,
-    /// The `modes` experiment: the Output pane and its tour tip
-    /// (`crate::experiments::enabled` on a native host; on in fixtures).
-    pub(super) modes: bool,
     /// The `voice-filter` experiment: the Voice Filter pane even before the
     /// Hex Microphone is on (`crate::experiments::enabled` on a native host).
     pub(super) voice_filter: bool,
     /// Live per-experiment switch state for non-pane experiments (`live-text`,
-    /// `smart-turn`, `live-chapters`, …).
+    /// `live-chapters`, …).
     pub(super) experiments: [bool; crate::experiments::Experiment::ALL.len()],
     /// macOS 27 lists Accessibility as "Device Control and Data Access"
     /// (`permission_guide::list_name`); the permission rows use that name.
@@ -387,16 +375,9 @@ impl PlatformState {
             relaunch_failed: false,
             dev_build: true,
             developer: false,
-            hud_lab: false,
-            activity: false,
             playground: false,
-            modes: true,
             voice_filter: false,
-            experiments: {
-                let mut flags = [false; crate::experiments::Experiment::ALL.len()];
-                flags[crate::experiments::Experiment::Modes.index()] = true;
-                flags
-            },
+            experiments: [false; crate::experiments::Experiment::ALL.len()],
             accessibility_renamed: false,
             tuning: TunedFilterConfig::default(),
             demo: None,

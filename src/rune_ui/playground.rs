@@ -124,7 +124,6 @@ const PATHS: &[(&str, &str)] = &[
         "Window/Modes/Transformation menu",
     ),
     ("modes-opencode-v1", "Window/Modes/OpenCode V1"),
-    ("modes-off", "Window/Modes/Off"),
     (
         "mac-input-source-models",
         "Window/General/Input source models",
@@ -478,6 +477,20 @@ mod tests {
             }
         }
         open_link(&mut rt, "hex://story/hud/processing?variant=menu-bar");
+        for control in [
+            "dot-scope-reset",
+            "dot-scope-copy",
+            "dot-scope-save",
+            "dot-processing",
+            "dot-placement",
+            "dot-auto-level",
+            "dot-spacing",
+        ] {
+            assert!(
+                rt.find(control).is_some(),
+                "HUD story side panel lacked {control}"
+            );
+        }
     }
 
     /// Every capture-capsule story, on every flow after a capture, opens
